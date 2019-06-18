@@ -40,6 +40,20 @@
      private $item = [];
 
      /**
+      * @var Customer
+      */
+     private $customer;
+
+     /**
+      * Cart constructor.
+      * @param Customer $customer
+      */
+     function __construct(Customer $customer)
+     {
+         $this->customer = $customer;
+     }
+
+     /**
       * @param Product $product
       */
      public function addToCart(Product $product): void
@@ -52,9 +66,35 @@
          return $this->item;
      }
 
+     /**
+      * @return Customer
+      */
+     public function getCustomer()
+     {
+         return $this->customer;
+     }
+
      public function __clone()
      {
          $this->item = [];
+         $this->customer = new Customer('Clone Customer');
+     }
+ }
+
+ class Customer
+ {
+     /**
+      * @var string
+      */
+     protected $name;
+
+     /**
+      * Customer constructor.
+      * @param string $name
+      */
+     function __construct(string $name)
+     {
+         $this->name = $name;
      }
  }
 
@@ -62,7 +102,7 @@
 $product1 = new Product('Product1', 100);
 $product2 = new Product('Product2', 200);
 
-$cart1 = new Cart();
+$cart1 = new Cart(new Customer('Lucas'));
 $cart1->addToCart($product1);
 $cart1->addToCart($product2);
 
@@ -79,5 +119,7 @@ $cart2->addToCart($product1);
 $cart2->addToCart($product2);
 
 var_dump($cart1->getCart());
+var_dump($cart1->getCustomer());
 var_dump("=========================");
 var_dump($cart2->getCart());
+var_dump($cart2->getCustomer());
