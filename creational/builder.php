@@ -1,191 +1,143 @@
 <?php
 namespace B;
 
-//Abstract Product
-interface VehicleInterface
+//Builder Interface
+interface QueryBuilderInterface
 {
-    public function showDetails() : void;
-}
+    public function select(string $table, array $fields): QueryBuilderInterface;
 
-abstract class AbstractVehicle implements VehicleInterface
-{
-    protected $wheels;
-    protected $name;
-    protected $engine;
-}
+    public function where(string $field, string $value, string $operator = '='): QueryBuilderInterface;
 
-//Concrete Product
-class Car extends AbstractVehicle
-{
-    public function showDetails(): void
-    {
-        printf("%s car with %s wheels and %s engine \n", $this->name, $this->wheels, $this->engine);
-    }
+    public function limit(int $start, int $offset): QueryBuilderInterface;
 
-    public function setWheel(int $wheels)
-    {
-        $this->wheels = $wheels;
-    }
+    public function getSQL(): string;
 
-    public function setName(string $name)
-    {
-        $this->name = $name;
-    }
-
-    public function setEngine(string $engine)
-    {
-        $this->engine = $engine;
-    }
-}
-
-class Bike extends AbstractVehicle
-{
-    public function showDetails(): void
-    {
-        printf("%s bike with %s wheels \n", $this->name, $this->wheels);
-    }
-
-    public function setWheel(int $wheels)
-    {
-        $this->wheels = $wheels;
-    }
-
-    public function setName(string $name)
-    {
-        $this->name = $name;
-    }
-}
-
-//Abstract Builder
-interface VehicleWithEngineInterface extends VehicleWithoutBuilderInterface
-{
-    public function setEngine(string $engine) : VehicleInterface;
-}
-
-interface VehicleWithoutBuilderInterface
-{
-    public function setWheel(int $wheels) : VehicleInterface;
-    public function setName(string $name) : VehicleInterface;
-    public function getProduct() : VehicleInterface;
+    public function reset(): void;
 }
 
 //Concrete Builder
-class CarBuilder implements VehicleWithEngineInterface
+class MysqlQueryBuilder implements QueryBuilderInterface
 {
     /**
-     * @var Car
+     * @var \stdClass
      */
-    protected $car;
+    protected $query;
 
-    public function __construct()
+    public function reset(): void
     {
-        $this->car = new Car();
+        $this->query = new \stdClass;
     }
 
-    public function setWheel(int $wheels): VehicleInterface
+    /**
+     * @param string $table
+     * @param array $fields
+     * @return QueryBuilderInterface
+     */
+    public function select(string $table, array $fields): QueryBuilderInterface
     {
-        $this->car->setWheel($wheels);
+        $this->reset();
+        $this->query->base = "SELECT " . implode(", ", $fields) . " FROM " . $table;
+        $this->query->type = 'select';
 
-        return $this->car;
+        return $this;
     }
 
-    public function setName(string $name): VehicleInterface
+    /**
+     * @param string $field
+     * @param string $value
+     * @param string $operator
+     * @return QueryBuilderInterface
+     * @throws \Exception
+     */
+    public function where(string $field, string $value, string $operator = '='): QueryBuilderInterface
     {
-        $this->car->setName($name);
+        if (!in_array($this->query->type, ['select', 'update'])) {
+            throw new \Exception("WHERE can only be added to SELECT OR UPDATE");
+        }
+        $this->query->where[] = "$field $operator '$value'";
 
-        return $this->car;
+        return $this;
     }
 
-    public function setEngine(string $engine): VehicleInterface
+    /**
+     * @param int $start
+     * @param int $offset
+     * @return QueryBuilderInterface
+     * @throws \Exception
+     */
+    public function limit(int $start, int $offset): QueryBuilderInterface
     {
-        $this->car->setEngine($engine);
+        if (!in_array($this->query->type, ['select'])) {
+            throw new \Exception("LIMIT can only be added to SELECT");
+        }
+        $this->query->limit = " LIMIT " . $start . ", " . $offset;
 
-        return $this->car;
+        return $this;
     }
 
-    public function getProduct() : VehicleInterface
+    /**
+     * @return string
+     */
+    public function getSQL(): string
     {
-        return $this->car;
+        $query = $this->query;
+        $sql = $query->base;
+        if (!empty($query->where)) {
+            $sql .= " WHERE " . implode(' AND ', $query->where);
+        }
+        if (isset($query->limit)) {
+            $sql .= $query->limit;
+        }
+        $sql .= ";";
+
+        return $sql;
     }
 }
 
-class BikeBuilder implements VehicleWithoutBuilderInterface
+//Concrete Builder
+class PostgresQueryBuilder extends MysqlQueryBuilder
 {
     /**
-     * @var Bike
+     * @param int $start
+     * @param int $offset
+     * @return QueryBuilderInterface
      */
-    protected $bike;
-
-    public function __construct()
+    public function limit(int $start, int $offset): QueryBuilderInterface
     {
-        $this->bike = new Bike();
-    }
+        parent::limit($start, $offset);
 
-    public function setWheel(int $wheels): VehicleInterface
-    {
-        $this->bike->setWheel($wheels);
+        $this->query->limit = " LIMIT " . $start . " OFFSET " . $offset;
 
-        return $this->bike;
-    }
-
-    public function setName(string $name): VehicleInterface
-    {
-        $this->bike->setName($name);
-
-        return $this->bike;
-    }
-
-    public function getProduct() : VehicleInterface
-    {
-        return $this->bike;
+        return $this;
     }
 }
 
 //Director (optional)
-class Director {
+class QueryManager {
     /**
-     * @var VehicleWithoutBuilderInterface | VehicleWithoutBuilderInterface
+     * @var QueryBuilderInterface
      */
-    private $builder;
+    private $queryBuilder;
 
-    /**
-     * @param string $engine
-     * @param string $name
-     * @param int $wheels
-     * @return VehicleInterface
-     */
-    public function createCar(string $engine, string $name, int $wheels) : VehicleInterface
+    public function setQueryBuilder(QueryBuilderInterface $queryBuilder): void
     {
-        $this->builder = new CarBuilder();
-        $this->builder->setEngine($engine);
-        $this->builder->setName($name);
-        $this->builder->setWheel($wheels);
-
-        return $this->builder->getProduct();
+        $this->queryBuilder = $queryBuilder;
     }
 
-    /**
-     * @param string $name
-     * @param int $wheels
-     * @return VehicleInterface
-     */
-    public function createBike(string $name, int $wheels) : VehicleInterface
+    public function selectQuery()
     {
-        $this->builder = new BikeBuilder();
-        $this->builder->setName($name);
-        $this->builder->setWheel($wheels);
-
-        return $this->builder->getProduct();
+        return $this->queryBuilder->select("users", ["name", "email", "password"])
+            ->where("age", 18, ">")
+            ->where("age", 30, "<")
+            ->limit(10, 20)
+            ->getSQL();
     }
 }
 
 //test
-$director = new Director();
-$car1 = $director->createCar('W16', 'Bugatti Veyron', 4);
-$car1->showDetails();
+$queryManager = new QueryManager();
+$queryManager->setQueryBuilder(new MysqlQueryBuilder());
+echo $queryManager->selectQuery() . "\n";
 
-$car2 = $director->createCar('700 PS', 'Lamborghini Aventador', 4);
-$car2->showDetails();
-
-$bike = $director->createBike('Martin', 2);
-$bike->showDetails();
+$queryManager->setQueryBuilder(new PostgresQueryBuilder());
+echo $queryManager->selectQuery() . "\n";
